@@ -1,4 +1,4 @@
-name: openwrt-arm64-rpi4b
+name: openwrt-arm64-rpi3a
 
 on:
   push:
