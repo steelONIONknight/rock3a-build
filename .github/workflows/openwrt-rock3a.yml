@@ -1,0 +1,103 @@
+name: openwrt-arm64-rpi4b
+
+on:
+  push:
+    tags: R*-rpi3a
+
+env:
+  BUILD_NAME: openwrt-arm64-rock3a
+  REPO_URL: https://github.com/coolsnowwolf/lede
+  REPO_BRANCH: master
+  CONFIG_FILE: rock3a.config
+  SHOWSSR_SH: HELLOWORLD.sh
+  # CUSTOMIZE_SH: customize-rpi4b.sh
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Initialization environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          docker rmi `docker images -q`
+          sudo -E rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d /usr/local/lib/android
+          sudo -E apt-mark hold grub-efi-amd64-signed
+          sudo -E apt update
+          sudo -E apt -y purge azure-cli* docker* ghc* zulu* llvm* firefox google* dotnet* powershell* openjdk* mysql* php* mongodb* dotnet* moby* snap*
+          sudo -E apt -y full-upgrade
+          sudo -E apt -y install ack antlr3 aria2 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip libpython3-dev qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+          sudo -E systemctl daemon-reload
+          sudo -E apt -y autoremove --purge
+          sudo -E apt clean
+          sudo -E timedatectl set-timezone "Asia/Shanghai"
+      
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Clone source code
+        run: git clone --depth 1 $REPO_URL -b $REPO_BRANCH openwrt
+
+      - name: Update & Install feeds
+        working-directory: ./openwrt
+        run: |
+          sh ../$SHOWSSR_SH
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Configuration Customization - ${{ env.BUILD_NAME }}
+        run: |
+          [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+          cd openwrt
+          make defconfig
+
+      - name: Download package
+        working-directory: ./openwrt
+        run: |
+          make download -j$(nproc) V=s
+          find dl -size -1024c -exec rm -f {} \;
+
+      - name: Build firmware
+        working-directory: ./openwrt
+        run: |
+          make -j$(nproc) V=s
+
+      - name: Assemble artifact
+        working-directory: ./openwrt
+        run: |
+          rm -rf ./artifact/
+          mkdir -p ./artifact/
+          find ./bin/targets/ -name "*ext4*.img.*" | xargs -i mv -f {} ./artifact/
+          find ./bin/targets/ -name "*squashfs*.img.*" | xargs -i mv -f {} ./artifact/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.BUILD_NAME }}
+          path: openwrt/artifact
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Download artifact
+        uses: actions/download-artifact@v3
+        with:
+          path: ./
+
+      - name: Create release and upload asset
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -x
+          assets=()
+          for asset in ./$BUILD_NAME/*; do
+            assets+=("-a" "$asset")
+          done
+          tag_name=${GITHUB_REF##*/}
+          hub release create "${assets[@]}" -m "$BUILD_NAME ${tag_name%%-*}" "$tag_name"
