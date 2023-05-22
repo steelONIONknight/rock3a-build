@@ -1,8 +1,7 @@
 name: openwrt-arm64-rpi3a
 
 on:
-  push:
-    tags: R*-rpi3a
+  [push]
 
 env:
   BUILD_NAME: openwrt-arm64-rock3a
