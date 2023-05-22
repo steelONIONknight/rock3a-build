@@ -1,7 +1,6 @@
 name: openwrt-arm64-rpi3a
 
-on:
-  [push]
+on: workflow_dispatch
 
 env:
   BUILD_NAME: openwrt-arm64-rock3a
