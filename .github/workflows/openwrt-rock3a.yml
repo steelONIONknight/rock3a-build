@@ -46,6 +46,7 @@ jobs:
 
       - name: Configuration Customization - ${{ env.BUILD_NAME }}
         run: |
+          [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
           cd openwrt
           make defconfig
 
